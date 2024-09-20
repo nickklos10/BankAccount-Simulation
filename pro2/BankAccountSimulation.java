@@ -105,7 +105,7 @@ public class BankAccountSimulation {
                 }
 
                 try {
-                    // Increase sleep time for depositors to reduce monopolization
+                    // Increasing sleep time for depositors to reduce monopolization
                     Thread.sleep(random.nextInt(1700));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -316,15 +316,15 @@ public class BankAccountSimulation {
 
     public static void main(String[] args) {
         try {
-            // Create a FileOutputStream
+            // Creating a FileOutputStream
             FileOutputStream fos = new FileOutputStream("simulationOutput.txt");
-            // Create a PrintStream that will write to the file
+            // Creating a PrintStream that will write to the file
             PrintStream filePrintStream = new PrintStream(fos);
 
-            // Create a custom PrintStream that writes to both console and file
+            // Creating a custom PrintStream that writes to both console and file
             PrintStream multiOut = new PrintStream(new OutputStreamMultiplexer(System.out, filePrintStream));
 
-            // Set System.out to use the custom PrintStream
+            // Setting System.out to use the custom PrintStream
             System.setOut(multiOut);
 
             System.out.println("*** Simulation Begins...");
