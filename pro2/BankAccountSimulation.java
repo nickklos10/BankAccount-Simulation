@@ -1,3 +1,9 @@
+/* Name: Nicholas Klos
+Course: CNT 4714 Fall 2024
+Assignment title:
+Project 2 – Synchronized/Cooperating Threads – A Banking Simulation
+Due Date: September 22, 2024
+*/
 package pro2;
 
 import java.util.TimeZone;
