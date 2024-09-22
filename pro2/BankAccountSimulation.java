@@ -86,26 +86,40 @@ public class BankAccountSimulation {
                 int amount = random.nextInt(MAX_DEPOSIT) + 1;
                 Account account = accounts[accountNum];
 
-                account.getLock().lock();
+                boolean locked = false;
                 try {
-                    account.deposit(amount);
-                    int currentTransactionNumber;
-                    synchronized (transactionLock) {
-                        transactionCounter++;
-                        currentTransactionNumber = transactionCounter;
-                        System.out.printf("Agent DT%-1d deposits $%-3d into JA-%-45d (+) JA-%-1d balance is $%-10d %-22s#%d%n",
-                                          id, amount, accountNum, accountNum, account.getBalance(), "", transactionCounter);
+                    locked = account.getLock().tryLock(500, TimeUnit.MILLISECONDS); // 500ms timeout
+                    if (locked) {
+                        account.deposit(amount);
+                        int currentTransactionNumber;
+                        synchronized (transactionLock) {
+                            transactionCounter++;
+                            currentTransactionNumber = transactionCounter;
+                            System.out.printf("Agent DT%-1d deposits $%-3d into JA-%-45d (+) JA-%-1d balance is $%-10d %-22s#%d%n",
+                                    id, amount, accountNum, accountNum, account.getBalance(), "", transactionCounter);
+                        }
+                        if (amount > FLAG_DEPOSIT_THRESHOLD) {
+                            System.out.println("\n***FLAGGED TRANSACTION*** Agent DT" + id + " Made a deposit in excess of $450.00 USD - See Flagged transaction log\n");
+                            logFlaggedTransaction("Deposit", accountNum, amount, "DT" + id, currentTransactionNumber);
+                        }
+                    } else {
+                        // Lock not acquired; sleep briefly before retrying
+                        try {
+                            Thread.sleep(50); // Sleep for 50 milliseconds
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        continue; // Retry the operation
                     }
-                    if (amount > FLAG_DEPOSIT_THRESHOLD) {
-                        System.out.println("\n***FLAGGED TRANSACTION*** Agent DT" + id + " Made a deposit in excess of $450.00 USD - See Flagged transaction log\n");
-                        logFlaggedTransaction("Deposit", accountNum, amount, "DT" + id, currentTransactionNumber);
-                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 } finally {
-                    account.getLock().unlock();
+                    if (locked) {
+                        account.getLock().unlock();
+                    }
                 }
 
                 try {
-                    // Increasing sleep time for depositors to reduce monopolization
                     Thread.sleep(random.nextInt(1700));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -113,6 +127,7 @@ public class BankAccountSimulation {
             }
         }
     }
+
 
     private static class Withdrawer implements Runnable {
         private final int id;
@@ -128,27 +143,42 @@ public class BankAccountSimulation {
                 int amount = random.nextInt(MAX_WITHDRAWAL) + 1;
                 Account account = accounts[accountNum];
 
-                account.getLock().lock();
+                boolean locked = false;
                 try {
-                    if (account.withdraw(amount)) {
-                        int currentTransactionNumber;
-                        synchronized (transactionLock) {
-                            transactionCounter++;
-                            currentTransactionNumber = transactionCounter;
-                        }
-                        System.out.printf("                              Agent WT%-1d withdraws $%-2d from JA-%-15d (-) JA-%-1d balance is $%-10d %-22s#%d%n",
-                                id, amount, accountNum, accountNum, account.getBalance(), "", currentTransactionNumber);
+                    locked = account.getLock().tryLock(500, TimeUnit.MILLISECONDS); // 500ms timeout
+                    if (locked) {
+                        if (account.withdraw(amount)) {
+                            int currentTransactionNumber;
+                            synchronized (transactionLock) {
+                                transactionCounter++;
+                                currentTransactionNumber = transactionCounter;
+                            }
+                            System.out.printf("                              Agent WT%-1d withdraws $%-2d from JA-%-15d (-) JA-%-1d balance is $%-10d %-22s#%d%n",
+                                    id, amount, accountNum, accountNum, account.getBalance(), "", currentTransactionNumber);
 
-                        if (amount > FLAG_WITHDRAWAL_THRESHOLD) {
-                            System.out.println("\n***FLAGGED TRANSACTION*** Agent WT" + id + " made a withdrawal in excess of $90.00 USD - See Flagged Transaction Log.\n");
-                            logFlaggedTransaction("Withdrawal", accountNum, amount, "WT" + id, currentTransactionNumber);
+                            if (amount > FLAG_WITHDRAWAL_THRESHOLD) {
+                                System.out.println("\n***FLAGGED TRANSACTION*** Agent WT" + id + " made a withdrawal in excess of $90.00 USD - See Flagged Transaction Log.\n");
+                                logFlaggedTransaction("Withdrawal", accountNum, amount, "WT" + id, currentTransactionNumber);
+                            }
+                        } else {
+                            System.out.printf("\nAgent WT%d attempts to withdraw $%-3d from: JA-%d (******) WITHDRAWAL BLOCKED - INSUFFICIENT FUNDS!!! Balance only $%-3d%n\n",
+                                    id, amount, accountNum, account.getBalance());
                         }
                     } else {
-                        System.out.printf("\nAgent WT%d attempts to withdraw $%-3d from: JA-%d (******) WITHDRAWAL BLOCKED - INSUFFICIENT FUNDS!!! Balance only $%-3d%n\n",
-                                id, amount, accountNum, account.getBalance());
+                        // Lock not acquired; sleep briefly before retrying
+                        try {
+                            Thread.sleep(50); // Sleep for 50 milliseconds
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        continue; // Retry the operation
                     }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 } finally {
-                    account.getLock().unlock();
+                    if (locked) {
+                        account.getLock().unlock();
+                    }
                 }
 
                 try {
@@ -159,6 +189,7 @@ public class BankAccountSimulation {
             }
         }
     }
+
 
     private static class Transferer implements Runnable {
         private final int id;
@@ -177,30 +208,44 @@ public class BankAccountSimulation {
                 Account from = accounts[fromAccount];
                 Account to = accounts[toAccount];
 
-                while (true) {
+                long deadline = System.currentTimeMillis() + 1000; // 1 second timeout
+                boolean success = false;
+
+                while (System.currentTimeMillis() < deadline && !success) {
                     boolean fromLocked = false;
                     boolean toLocked = false;
                     try {
-                        fromLocked = from.getLock().tryLock();
+                        long remaining = deadline - System.currentTimeMillis();
+                        if (remaining <= 0) {
+                            break;
+                        }
+                        fromLocked = from.getLock().tryLock(remaining, TimeUnit.MILLISECONDS);
                         if (fromLocked) {
-                            toLocked = to.getLock().tryLock();
+                            remaining = deadline - System.currentTimeMillis();
+                            if (remaining <= 0) {
+                                break;
+                            }
+                            toLocked = to.getLock().tryLock(remaining, TimeUnit.MILLISECONDS);
                             if (toLocked) {
                                 if (from.withdraw(amount)) {
                                     to.deposit(amount);
                                     synchronized (transactionLock) {
                                         transactionCounter++;
                                         System.out.printf("\nTRANSFER --> Agent TR%-1d transferring $%-1d from JA-%-1d to JA-%-21d  -- JA-%-1d balance is now $%-28d #%d%n",
-                                                id, amount, fromAccount, toAccount, fromAccount, from.getBalance() , transactionCounter);
+                                                id, amount, fromAccount, toAccount, fromAccount, from.getBalance(), transactionCounter);
                                         System.out.printf("TRANSFER COMPLETE --> Account JA-%-1d balance now $%-1d\n",
                                                 toAccount, to.getBalance());
                                     }
-                                    break;
+                                    success = true; // Transfer successful
                                 } else {
                                     System.out.printf("\nAgent TR%d attempts to transfer $%-3d from: JA-%d to JA-%d (******) TRANSFER BLOCKED - INSUFFICIENT FUNDS!!! Balance only $%-3d%n\n",
                                             id, amount, fromAccount, toAccount, from.getBalance());
+                                    success = true; // Exit loop since transfer cannot proceed
                                 }
                             }
                         }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
                     } finally {
                         if (toLocked) {
                             to.getLock().unlock();
@@ -210,10 +255,12 @@ public class BankAccountSimulation {
                         }
                     }
 
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
+                    if (!success) {
+                        try {
+                            Thread.sleep(50); // Sleep briefly before retrying
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
                     }
                 }
 
@@ -225,6 +272,8 @@ public class BankAccountSimulation {
             }
         }
     }
+
+
 
     private static class InternalAuditor implements Runnable {
         private int lastTransactionCount = 0;
