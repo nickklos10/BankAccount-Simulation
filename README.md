@@ -6,41 +6,55 @@ This project is a multithreaded banking system simulation designed to handle con
 
 ### Key Features
 
-- Concurrent transactions: Agents perform deposits, withdrawals, and transfers concurrently across multiple bank accounts.
-- Thread synchronization: Locks are used to ensure data consistency and prevent race conditions during concurrent access.
+- Concurrent Transactions: Agents perform deposits, withdrawals, and transfers concurrently across multiple bank accounts.
+- Thread Synchronization: Locks are managed within the account methods to ensure data consistency and prevent race conditions during concurrent access. Condition variables are utilized to coordinate between threads, allowing withdrawal agents to wait for sufficient funds.
 - Audits: Independent internal and federal audits run periodically to verify the correctness of account states.
-- Transaction logging: All transactions are logged, and flagged transactions are recorded separately for auditing purposes.
-- Thread pools: The simulation uses thread pools to manage agent threads efficiently.
-- Retry mechanism: Agents retry acquiring locks if unavailable, ensuring eventual progress without deadlock.
+- Transaction Logging: All transactions are logged, and flagged transactions that exceed predefined thresholds are recorded separately in a CSV file (transactions.csv) for auditing purposes.
+- Thread Pools: The simulation uses thread pools to manage agent threads efficiently.
+- Waiting Mechanism for Withdrawals: Withdrawal agents now wait for sufficient funds using condition variables, ensuring they can perform withdrawals effectively when funds become available.
+- Deadlock Prevention: Consistent lock ordering and proper use of condition variables prevent deadlocks in the system.
 
 ### Code Structure
 
 1. **Main Simulation Logic**
    
-   At the heart of the system is the main driver class (BankAccountSimulation.java) which initializes the bank, accounts, agents (depositors, withdrawers), and audit mechanisms.
-   - Bank: This class is responsible for holding the account balances and facilitating transactions.
-   - Thread pool: A fixed-size thread pool ensures that multiple agents can operate concurrently without overwhelming the system.
+   At the heart of the system is the main driver class (BankAccountSimulation.java), which initializes the bank accounts, agents (depositors, withdrawers, transferers), and audit mechanisms.
+
+   - Bank Accounts: Each account is responsible for holding its balance and facilitating transactions through synchronized methods.
+   - Thread Pool: A fixed-size thread pool ensures that multiple agents can operate concurrently without overwhelming the system.
 
 2. **Bank and Account Class**
    
-   The Bank class manages multiple bank accounts, and the Account class stores the balance for each account. Thread safety is implemented using synchronized methods or blocks to ensure that only one thread can perform operations like deposit or withdraw at a time.
-   - Synchronized methods: By synchronizing the deposit, withdraw, and transfer methods, we prevent multiple threads from accessing and modifying the same account simultaneously, thus avoiding data inconsistencies.
+   The Account class manages individual bank accounts. Thread safety is implemented by moving the locking mechanism inside the account methods (deposit, withdraw, and transfer).
+
+   - Synchronized Methods with Locks: By using locks within the account methods, we prevent multiple threads from accessing and modifying the same account simultaneously, thus avoiding data      inconsistencies.
+   - Condition Variables: The Condition object is used in the withdraw method to allow withdrawal agents to wait for sufficient funds rather than giving up immediately when funds are             insufficient.
   
 3. **Transaction Logging and Flagging**
    
-   Transactions are logged for audit purposes, and any transaction that violates certain predefined criteria (e.g., exceeding a threshold amount or negative balance) is flagged.
-   - TransactionLogger: This class handles writing transactions to a file and flagging transactions that need special attention. Flagged transactions could involve unusual amounts or incorrect behavior, which triggers audits.
+   Transactions are logged for audit purposes, and any transaction that violates certain predefined criteria (e.g., exceeding a threshold amount) is flagged.
+
+   - CSV Logging: Flagged transactions are now recorded separately in a CSV file (transactions.csv), providing a structured and easily accessible format for auditing.
+
+   - TransactionLogger: This component handles writing transactions to the CSV file and flagging transactions that need special attention. Flagged transactions involve unusual amounts,           which triggers audits.
 
 4. **Auditing Mechanism**
    
-   Auditors are separate threads that run on random intervals to check the consistency of the account balances. The auditors acquire locks on all accounts before performing their checks, ensuring no transactions occur during the audit process.
-   - Auditors: Auditors lock all accounts to prevent any operations while verifying the integrity of the system. They ensure that the balance totals remain consistent across all accounts and that no unauthorized transactions are present.
+   Auditors are separate threads that run at random intervals to check the consistency of the account balances. The auditors acquire locks on all accounts before performing their checks,       ensuring no transactions occur during the audit process.
+
+   - Auditors: Auditors lock all accounts to prevent any operations while verifying the integrity of the system. They ensure that the balance totals remain consistent across all accounts         and that no unauthorized transactions are present.
+
+   - Lock Ordering: To prevent deadlocks during audits, locks on accounts are acquired in a consistent order.
   
 5. **Thread Pool and Locking Mechanism**
     
-   A thread pool is used to manage the agents (depositors, withdrawers, auditors) to ensure efficient handling of concurrent operations. Locks are used to avoid race conditions.
+   A thread pool is used to manage the agents (depositors, withdrawers, transferers, auditors) to ensure efficient handling of concurrent operations. Locks and condition variables are used     to avoid race conditions and manage thread synchronization.
+
    - Thread Pool: This ensures that there are a limited number of threads operating concurrently, improving performance and reducing contention.
-   - Lock Retry Mechanism: If an agent cannot acquire the lock, it retries immediately to ensure continuous progress without blocking the system unnecessarily.
+
+   - Waiting Mechanism with Condition Variables: Withdrawal agents utilize condition variables to wait for sufficient funds, ensuring they can perform withdrawals effectively when funds          become available.
+
+   Deadlock Prevention: By acquiring locks in a consistent order and using condition variables appropriately, the system prevents deadlocks and ensures continuous progress.
   
 ## How to Run
 
