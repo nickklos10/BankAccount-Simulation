@@ -1,4 +1,4 @@
-# Multithreaded Banking Simulation
+# Synchronized & Cooperating Threads – A Banking Simulation
 
 ### Project Overview
 
